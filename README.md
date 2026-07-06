@@ -13,27 +13,38 @@
 
 ---
 
-## 1. 默认模型
+## 1. 默认模型（4 核 CPU / 4GB 内存 / 40GB 系统盘方案）
 
-默认配置：
+你的服务器配置是 **CPU 4 核、内存 4GB、系统盘 40GB**。这个配置可以运行本地免费模型，但不适合直接跑 3B/7B 级别模型；推荐先用 0.5B 小模型保证稳定在线。
 
 ```env
 MODEL_PROVIDER=ollama
 OLLAMA_BASE_URL=http://ollama:11434
+MODEL_NAME=qwen2.5:0.5b
+MODEL_TEMPERATURE=0.35
+MODEL_MAX_TOKENS=800
+OLLAMA_NUM_CTX=2048
+OLLAMA_NUM_THREAD=3
+MAX_CONCURRENT_REQUESTS=1
+```
+
+这套方案的目标是：
+
+- 优先保证 4G 内存服务器能稳定运行；
+- 控制上下文长度和输出长度，降低内存占用；
+- 使用 3 个推理线程，给 4 核 CPU 预留 1 核给系统、Docker 和 Web 服务；
+- 单并发生成，避免多个请求同时挤爆内存；
+- 40GB 系统盘足够存放当前服务和 `qwen2.5:0.5b`，但不建议同时下载太多大模型；
+- 保持中文旅游问答可用，适合作为当前阶段的免费 AI 小助手。
+
+如果后续服务器升级到 8G 或以上，可以再尝试：
+
+```env
 MODEL_NAME=qwen2.5:1.5b
+MODEL_MAX_TOKENS=1200
 ```
 
-`qwen2.5:1.5b` 比较轻量，适合普通服务器先跑通。如果你的服务器配置较高，可以改成：
-
-```env
-MODEL_NAME=qwen2.5:3b
-```
-
-或者：
-
-```env
-MODEL_NAME=llama3.2:3b
-```
+如果服务器有更高内存或 GPU，再考虑 `qwen2.5:3b`、`llama3.2:3b` 等更大模型。
 
 ---
 
@@ -57,7 +68,7 @@ docker compose up -d --build
 首次启动后，需要拉取免费模型：
 
 ```bash
-docker compose exec ollama ollama pull qwen2.5:1.5b
+docker compose exec ollama ollama pull qwen2.5:0.5b
 ```
 
 检查模型是否存在：
@@ -81,9 +92,13 @@ curl http://115.159.221.212:1217/api/health
   "ok": true,
   "service": "free-japan-travel-ai",
   "provider": "ollama",
-  "model": "qwen2.5:1.5b",
+  "model": "qwen2.5:0.5b",
   "configured": true,
-  "free": true
+  "free": true,
+  "num_ctx": 2048,
+  "max_tokens": 800,
+  "num_thread": 3,
+  "max_concurrent_requests": 1
 }
 ```
 
@@ -137,14 +152,26 @@ VITE_API_BASE_URL=http://115.159.221.212:1217
 
 ## 7. 如果模型回答慢怎么办
 
-本地免费模型速度取决于服务器配置。
+本地免费模型速度取决于服务器 CPU、内存和当前负载。你的服务器是 4 核 CPU / 4GB 内存 / 40GB 系统盘，建议先不要追求大模型参数量，先保证稳定可用。
 
 建议：
 
-1. 先用 `qwen2.5:1.5b` 跑通；
-2. 如果速度可以，再试 `qwen2.5:3b`；
-3. 如果内存不足或很慢，换更小模型；
-4. 如果你希望更强效果，需要更高配置服务器或 GPU。
+1. 默认使用 `qwen2.5:0.5b`；
+2. 保持 `MAX_CONCURRENT_REQUESTS=1`，不要多并发；
+3. 如果回答仍然慢，可以把 `MODEL_MAX_TOKENS` 从 `800` 降到 `500`；
+4. 如果出现内存不足，建议增加 2G swap；
+5. 如果未来升级到 8G 内存，再尝试 `qwen2.5:1.5b`；
+6. 40GB 系统盘不要同时保留多个大模型，避免磁盘被模型文件占满。
+
+4GB 内存服务器可选增加 swap：
+
+```bash
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+```
 
 ---
 
@@ -155,7 +182,7 @@ VITE_API_BASE_URL=http://115.159.221.212:1217
 说明 Ollama 里还没有拉模型，执行：
 
 ```bash
-docker compose exec ollama ollama pull qwen2.5:1.5b
+docker compose exec ollama ollama pull qwen2.5:0.5b
 ```
 
 ### 8.2 前端请求失败
@@ -170,17 +197,28 @@ curl http://115.159.221.212:1217/api/health
 
 ### 8.3 想换模型
 
-修改 `.env`：
+4GB 内存服务器不建议直接换大模型。如果你已经确认内存余量充足，可以修改 `.env`：
 
 ```env
-MODEL_NAME=qwen2.5:3b
+MODEL_NAME=qwen2.5:1.5b
+MODEL_MAX_TOKENS=1200
 ```
 
-拉取新模型：
+拉取新模型并重启服务：
 
 ```bash
-docker compose exec ollama ollama pull qwen2.5:3b
+docker compose exec ollama ollama pull qwen2.5:1.5b
 docker compose restart public-japan-travel-ai
+```
+
+如果出现卡顿、超时或容器重启，把 `.env` 改回：
+
+```env
+MODEL_NAME=qwen2.5:0.5b
+MODEL_MAX_TOKENS=800
+OLLAMA_NUM_CTX=2048
+OLLAMA_NUM_THREAD=3
+MAX_CONCURRENT_REQUESTS=1
 ```
 
 ---
@@ -206,14 +244,7 @@ docker compose restart public-japan-travel-ai
 
 ## 10. Docker 构建时报 `Could not find a version that satisfies the requirement fastapi==0.115.0`
 
-这个错误通常不是 FastAPI 版本不存在，而是服务器 Docker 构建时访问不到 PyPI，导致 pip 没拿到任何包列表。
-
-本仓库 Dockerfile 已默认使用阿里云 PyPI 镜像：
-
-```dockerfile
-ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
-ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
-```
+这个错误通常是旧版本镜像还在执行 `pip install`，但当前最新版本已经移除了 FastAPI / requests / pydantic 依赖，Docker 构建不会再安装任何 pip 包。
 
 请在服务器上拉最新代码后重新构建：
 
@@ -224,28 +255,15 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-如果阿里云镜像仍然失败，可以切换清华源构建：
+如果仍然看到 `fastapi==0.115.0`，说明服务器目录里的代码不是最新版本，或者宝塔使用了旧缓存。请确认 `Dockerfile` 内容应类似：
 
-```bash
-docker compose build --no-cache \
-  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-  --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
-
-docker compose up -d
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY main.py ./
+EXPOSE 8000
+CMD ["python", "main.py"]
 ```
-
-也可以临时测试容器内网络：
-
-```bash
-docker run --rm python:3.11-slim python -m pip index versions fastapi -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
-```
-
-如果仍失败，优先检查：
-
-1. 服务器 DNS 是否正常；
-2. 宝塔/系统防火墙是否限制容器访问外网；
-3. Docker 是否能访问外网；
-4. 是否配置了不可用的 pip 源。
 
 ---
 

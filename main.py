@@ -3,6 +3,7 @@ import os
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import BoundedSemaphore
 from typing import Dict, List
 
 
@@ -26,9 +27,12 @@ _load_dotenv()
 
 SERVICE_NAME = os.environ.get('SERVICE_NAME') or 'free-japan-travel-ai'
 MODEL_PROVIDER = (os.environ.get('MODEL_PROVIDER') or 'ollama').lower()
-MODEL_NAME = os.environ.get('MODEL_NAME') or 'qwen2.5:1.5b'
-MODEL_TEMPERATURE = float(os.environ.get('MODEL_TEMPERATURE') or '0.4')
-MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '2000')
+MODEL_NAME = os.environ.get('MODEL_NAME') or 'qwen2.5:0.5b'
+MODEL_TEMPERATURE = float(os.environ.get('MODEL_TEMPERATURE') or '0.35')
+MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '800')
+OLLAMA_NUM_CTX = int(os.environ.get('OLLAMA_NUM_CTX') or '2048')
+OLLAMA_NUM_THREAD = int(os.environ.get('OLLAMA_NUM_THREAD') or '3')
+MAX_CONCURRENT_REQUESTS = int(os.environ.get('MAX_CONCURRENT_REQUESTS') or '1')
 REQUEST_TIMEOUT = int(os.environ.get('REQUEST_TIMEOUT') or '120')
 STREAM_TIMEOUT = int(os.environ.get('STREAM_TIMEOUT') or '180')
 PORT = int(os.environ.get('PORT') or '8000')
@@ -36,6 +40,7 @@ CORS_ALLOW_ORIGINS = _split_csv(os.environ.get('CORS_ALLOW_ORIGINS') or '*')
 OLLAMA_BASE_URL = (os.environ.get('OLLAMA_BASE_URL') or 'http://ollama:11434').rstrip('/')
 OPENAI_BASE_URL = (os.environ.get('OPENAI_BASE_URL') or 'https://api.openai.com/v1').rstrip('/')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') or ''
+MODEL_SEMAPHORE = BoundedSemaphore(max(1, MAX_CONCURRENT_REQUESTS))
 
 SYSTEM_PROMPT = (
     '你是「日本旅游 AI 小助手」，服务于一个中文日本旅游攻略网站。\n'
@@ -76,33 +81,40 @@ def _post_json(url: str, payload: Dict, headers: Dict[str, str] | None = None, t
 
 
 def _call_ollama(payload: Dict) -> str:
-    data = _post_json(
-        OLLAMA_BASE_URL + '/api/chat',
-        {
-            'model': MODEL_NAME,
-            'messages': _history(payload),
-            'stream': False,
-            'options': {'temperature': MODEL_TEMPERATURE, 'num_predict': MODEL_MAX_TOKENS},
-        },
-        timeout=REQUEST_TIMEOUT,
-    )
+    with MODEL_SEMAPHORE:
+        data = _post_json(
+            OLLAMA_BASE_URL + '/api/chat',
+            {
+                'model': MODEL_NAME,
+                'messages': _history(payload),
+                'stream': False,
+                'options': {
+                    'temperature': MODEL_TEMPERATURE,
+                    'num_predict': MODEL_MAX_TOKENS,
+                    'num_ctx': OLLAMA_NUM_CTX,
+                    'num_thread': OLLAMA_NUM_THREAD,
+                },
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
     return (data.get('message') or {}).get('content') or ''
 
 
 def _call_openai(payload: Dict) -> str:
     if not OPENAI_API_KEY:
         raise RuntimeError('OpenAI-compatible 模式未配置 OPENAI_API_KEY')
-    data = _post_json(
-        OPENAI_BASE_URL + '/chat/completions',
-        {
-            'model': MODEL_NAME,
-            'messages': _history(payload),
-            'temperature': MODEL_TEMPERATURE,
-            'max_tokens': MODEL_MAX_TOKENS,
-        },
-        headers={'Authorization': 'Bearer ' + OPENAI_API_KEY},
-        timeout=REQUEST_TIMEOUT,
-    )
+    with MODEL_SEMAPHORE:
+        data = _post_json(
+            OPENAI_BASE_URL + '/chat/completions',
+            {
+                'model': MODEL_NAME,
+                'messages': _history(payload),
+                'temperature': MODEL_TEMPERATURE,
+                'max_tokens': MODEL_MAX_TOKENS,
+            },
+            headers={'Authorization': 'Bearer ' + OPENAI_API_KEY},
+            timeout=REQUEST_TIMEOUT,
+        )
     return data.get('choices', [{}])[0].get('message', {}).get('content') or ''
 
 
@@ -137,6 +149,10 @@ class Handler(BaseHTTPRequestHandler):
                 'model': MODEL_NAME,
                 'configured': True if MODEL_PROVIDER == 'ollama' else bool(OPENAI_API_KEY),
                 'free': MODEL_PROVIDER == 'ollama',
+                'num_ctx': OLLAMA_NUM_CTX,
+                'max_tokens': MODEL_MAX_TOKENS,
+                'num_thread': OLLAMA_NUM_THREAD,
+                'max_concurrent_requests': MAX_CONCURRENT_REQUESTS,
             }))
             return
         self._send(404, _json_bytes({'ok': False, 'error': 'Not found'}))
@@ -194,7 +210,12 @@ class Handler(BaseHTTPRequestHandler):
             'model': MODEL_NAME,
             'messages': _history(payload),
             'stream': True,
-            'options': {'temperature': MODEL_TEMPERATURE, 'num_predict': MODEL_MAX_TOKENS},
+            'options': {
+                'temperature': MODEL_TEMPERATURE,
+                'num_predict': MODEL_MAX_TOKENS,
+                'num_ctx': OLLAMA_NUM_CTX,
+                'num_thread': OLLAMA_NUM_THREAD,
+            },
         }, ensure_ascii=False).encode('utf-8')
         req = urllib.request.Request(
             OLLAMA_BASE_URL + '/api/chat',
@@ -202,16 +223,17 @@ class Handler(BaseHTTPRequestHandler):
             headers={'Content-Type': 'application/json'},
             method='POST',
         )
-        with urllib.request.urlopen(req, timeout=STREAM_TIMEOUT) as resp:
-            for raw in resp:
-                if not raw.strip():
-                    continue
-                obj = json.loads(raw.decode('utf-8'))
-                delta = (obj.get('message') or {}).get('content') or ''
-                if delta:
-                    self._write_sse({'delta': delta})
-                if obj.get('done'):
-                    break
+        with MODEL_SEMAPHORE:
+            with urllib.request.urlopen(req, timeout=STREAM_TIMEOUT) as resp:
+                for raw in resp:
+                    if not raw.strip():
+                        continue
+                    obj = json.loads(raw.decode('utf-8'))
+                    delta = (obj.get('message') or {}).get('content') or ''
+                    if delta:
+                        self._write_sse({'delta': delta})
+                    if obj.get('done'):
+                        break
 
     def log_message(self, fmt: str, *args) -> None:
         print('%s - - [%s] %s' % (self.address_string(), self.log_date_time_string(), fmt % args))
