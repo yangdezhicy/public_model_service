@@ -246,3 +246,34 @@ docker run --rm python:3.11-slim python -m pip index versions fastapi -i https:/
 2. 宝塔/系统防火墙是否限制容器访问外网；
 3. Docker 是否能访问外网；
 4. 是否配置了不可用的 pip 源。
+
+---
+
+## 11. 彻底解决 pip / FastAPI 安装失败
+
+如果你曾遇到：
+
+```text
+Could not find a version that satisfies the requirement fastapi==0.115.0
+```
+
+最新版本已经彻底移除了 FastAPI / requests / pydantic 依赖，服务改为 Python 标准库实现：
+
+- 不执行 `pip install`
+- 不依赖 PyPI
+- 不会再因为 FastAPI 下载失败导致 Docker 构建失败
+
+请在服务器重新拉代码并无缓存构建：
+
+```bash
+cd /www/wwwroot/public_model_service
+git pull
+docker compose build --no-cache
+docker compose up -d
+```
+
+然后检查：
+
+```bash
+curl http://127.0.0.1:1217/api/health
+```
