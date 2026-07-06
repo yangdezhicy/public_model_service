@@ -201,3 +201,48 @@ MODEL_NAME=gpt-4o-mini
 ```bash
 docker compose restart public-japan-travel-ai
 ```
+
+---
+
+## 10. Docker 构建时报 `Could not find a version that satisfies the requirement fastapi==0.115.0`
+
+这个错误通常不是 FastAPI 版本不存在，而是服务器 Docker 构建时访问不到 PyPI，导致 pip 没拿到任何包列表。
+
+本仓库 Dockerfile 已默认使用阿里云 PyPI 镜像：
+
+```dockerfile
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+```
+
+请在服务器上拉最新代码后重新构建：
+
+```bash
+cd /www/wwwroot/public_model_service
+git pull
+docker compose build --no-cache
+docker compose up -d
+```
+
+如果阿里云镜像仍然失败，可以切换清华源构建：
+
+```bash
+docker compose build --no-cache \
+  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+  --build-arg PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+
+docker compose up -d
+```
+
+也可以临时测试容器内网络：
+
+```bash
+docker run --rm python:3.11-slim python -m pip index versions fastapi -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+```
+
+如果仍失败，优先检查：
+
+1. 服务器 DNS 是否正常；
+2. 宝塔/系统防火墙是否限制容器访问外网；
+3. Docker 是否能访问外网；
+4. 是否配置了不可用的 pip 源。
