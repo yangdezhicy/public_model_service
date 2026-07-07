@@ -27,10 +27,10 @@ _load_dotenv()
 
 SERVICE_NAME = os.environ.get('SERVICE_NAME') or 'free-japan-travel-ai'
 MODEL_PROVIDER = (os.environ.get('MODEL_PROVIDER') or 'ollama').lower()
-MODEL_NAME = os.environ.get('MODEL_NAME') or 'qwen2.5:0.5b'
-MODEL_TEMPERATURE = float(os.environ.get('MODEL_TEMPERATURE') or '0.35')
-MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '800')
-OLLAMA_NUM_CTX = int(os.environ.get('OLLAMA_NUM_CTX') or '2048')
+MODEL_NAME = os.environ.get('MODEL_NAME') or 'qwen2.5:1.5b'
+MODEL_TEMPERATURE = float(os.environ.get('MODEL_TEMPERATURE') or '0.2')
+MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '1000')
+OLLAMA_NUM_CTX = int(os.environ.get('OLLAMA_NUM_CTX') or '4096')
 OLLAMA_NUM_THREAD = int(os.environ.get('OLLAMA_NUM_THREAD') or '3')
 MAX_CONCURRENT_REQUESTS = int(os.environ.get('MAX_CONCURRENT_REQUESTS') or '1')
 REQUEST_TIMEOUT = int(os.environ.get('REQUEST_TIMEOUT') or '120')
@@ -43,11 +43,11 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') or ''
 MODEL_SEMAPHORE = BoundedSemaphore(max(1, MAX_CONCURRENT_REQUESTS))
 
 SYSTEM_PROMPT = (
-    '你是「日本旅游 AI 小助手」，服务于一个中文日本旅游攻略网站。\n'
-    '你必须始终使用简体中文回答。\n'
-    '优先依据调用方提供的【站内资料】回答；涉及价格、地址、营业时间、店铺、景点等具体信息时，禁止编造。\n'
-    '如果资料不足，可以补充常识，但必须明确区分「资料已给出」和「通用建议」。\n'
-    '你的回答应条理清晰、可执行、适合真实出行决策。'
+    '你是「日本旅游 AI 小助手」，服务于一个中文日本旅游攻略网站。你必须始终使用简体中文回答。\n'
+    '回答优先级：1) 调用方提供的【站内资料】；2) 稳定通用旅行常识；3) 若资料不足，明确说“站内资料暂未覆盖”。\n'
+    '涉及价格、地址、营业时间、店铺、票券、签证、退税、交通时，禁止编造精确数值；没有资料就给核验方式和保守建议。\n'
+    '回答必须包含：结论先行、分点建议、注意事项；行程规划尽量按 Day 1/Day 2 输出；购物建议写清品类、预算和购买地点。\n'
+    '不要输出英文，除非是地名/品牌/官方名称；不要声称自己可以实时联网查询。'
 )
 
 
@@ -55,11 +55,18 @@ def _json_bytes(data: Dict) -> bytes:
     return json.dumps(data, ensure_ascii=False).encode('utf-8')
 
 
+def _compact_text(value: str, limit: int = 6500) -> str:
+    compact = ' '.join(value.replace('\r', '\n').split())
+    if len(compact) <= limit:
+        return compact
+    return compact[:limit] + '\n【资料过长已截断：请优先使用以上高相关片段】'
+
+
 def _history(payload: Dict) -> List[Dict[str, str]]:
-    knowledge = payload.get('knowledge') or ''
+    knowledge = _compact_text(payload.get('knowledge') or '')
     system_prompt = SYSTEM_PROMPT + ('\n\n【站内资料】\n' + knowledge if knowledge else '')
     messages = [{'role': 'system', 'content': system_prompt}]
-    for msg in (payload.get('messages') or [])[-12:]:
+    for msg in (payload.get('messages') or [])[-6:]:
         role = msg.get('role')
         content = msg.get('content')
         if role in ('user', 'assistant') and isinstance(content, str):

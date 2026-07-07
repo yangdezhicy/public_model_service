@@ -15,15 +15,15 @@
 
 ## 1. 默认模型（4 核 CPU / 4GB 内存 / 40GB 系统盘方案）
 
-你的服务器配置是 **CPU 4 核、内存 4GB、系统盘 40GB**。这个配置可以运行本地免费模型，但不适合直接跑 3B/7B 级别模型；推荐先用 0.5B 小模型保证稳定在线。
+你的服务器配置是 **CPU 4 核、内存 4GB、系统盘 40GB**。这个配置可以运行本地免费模型。当前默认使用 `qwen2.5:1.5b` 提升回答准确性，并通过单并发、低温度和上下文限制控制内存；如果服务器仍然 OOM，可临时降回 `qwen2.5:0.5b`。
 
 ```env
 MODEL_PROVIDER=ollama
 OLLAMA_BASE_URL=http://ollama:11434
-MODEL_NAME=qwen2.5:0.5b
-MODEL_TEMPERATURE=0.35
-MODEL_MAX_TOKENS=800
-OLLAMA_NUM_CTX=2048
+MODEL_NAME=qwen2.5:1.5b
+MODEL_TEMPERATURE=0.2
+MODEL_MAX_TOKENS=1000
+OLLAMA_NUM_CTX=4096
 OLLAMA_NUM_THREAD=3
 MAX_CONCURRENT_REQUESTS=1
 ```
@@ -34,7 +34,7 @@ MAX_CONCURRENT_REQUESTS=1
 - 控制上下文长度和输出长度，降低内存占用；
 - 使用 3 个推理线程，给 4 核 CPU 预留 1 核给系统、Docker 和 Web 服务；
 - 单并发生成，避免多个请求同时挤爆内存；
-- 40GB 系统盘足够存放当前服务和 `qwen2.5:0.5b`，但不建议同时下载太多大模型；
+- 40GB 系统盘足够存放当前服务和 `qwen2.5:1.5b`，但不建议同时下载太多大模型；
 - 保持中文旅游问答可用，适合作为当前阶段的免费 AI 小助手。
 
 如果后续服务器升级到 8G 或以上，可以再尝试：
@@ -68,7 +68,7 @@ docker compose up -d --build
 首次启动后，需要拉取免费模型：
 
 ```bash
-docker compose exec ollama ollama pull qwen2.5:0.5b
+docker compose exec ollama ollama pull qwen2.5:1.5b
 ```
 
 检查模型是否存在：
@@ -92,11 +92,11 @@ curl http://115.159.221.212:15325/api/health
   "ok": true,
   "service": "free-japan-travel-ai",
   "provider": "ollama",
-  "model": "qwen2.5:0.5b",
+  "model": "qwen2.5:1.5b",
   "configured": true,
   "free": true,
-  "num_ctx": 2048,
-  "max_tokens": 800,
+  "num_ctx": 4096,
+  "max_tokens": 1000,
   "num_thread": 3,
   "max_concurrent_requests": 1
 }
@@ -152,15 +152,15 @@ VITE_API_BASE_URL=http://115.159.221.212:15325
 
 ## 7. 如果模型回答慢怎么办
 
-本地免费模型速度取决于服务器 CPU、内存和当前负载。你的服务器是 4 核 CPU / 4GB 内存 / 40GB 系统盘，建议先不要追求大模型参数量，先保证稳定可用。
+本地免费模型速度取决于服务器 CPU、内存和当前负载。你的服务器是 4 核 CPU / 4GB 内存 / 40GB 系统盘，当前默认用 `qwen2.5:1.5b` 换取更准确的回答；如负载偏高，可按下面方式降级。
 
 建议：
 
-1. 默认使用 `qwen2.5:0.5b`；
+1. 默认使用 `qwen2.5:1.5b`，回答明显比 0.5B 更稳定；
 2. 保持 `MAX_CONCURRENT_REQUESTS=1`，不要多并发；
-3. 如果回答仍然慢，可以把 `MODEL_MAX_TOKENS` 从 `800` 降到 `500`；
+3. 如果回答仍然慢，可以把 `MODEL_MAX_TOKENS` 从 `1000` 降到 `700`；
 4. 如果出现内存不足，建议增加 2G swap；
-5. 如果未来升级到 8G 内存，再尝试 `qwen2.5:1.5b`；
+5. 如果仍然 OOM，再把 `MODEL_NAME` 降为 `qwen2.5:0.5b`，并把 `OLLAMA_NUM_CTX` 降为 `2048`；
 6. 40GB 系统盘不要同时保留多个大模型，避免磁盘被模型文件占满。
 
 4GB 内存服务器可选增加 swap：
@@ -182,7 +182,7 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 说明 Ollama 里还没有拉模型，执行：
 
 ```bash
-docker compose exec ollama ollama pull qwen2.5:0.5b
+docker compose exec ollama ollama pull qwen2.5:1.5b
 ```
 
 ### 8.2 前端请求失败
