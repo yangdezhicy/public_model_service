@@ -53,7 +53,7 @@ MODEL_MAX_TOKENS=1200
 你的服务器对外地址：
 
 ```text
-http://115.159.221.212:8888
+http://115.159.221.212:15320
 ```
 
 在服务器执行：
@@ -82,7 +82,7 @@ docker compose exec ollama ollama list
 ## 3. 健康检查
 
 ```bash
-curl http://115.159.221.212:8888/api/health
+curl http://115.159.221.212:15320/api/health
 ```
 
 正常返回类似：
@@ -107,7 +107,7 @@ curl http://115.159.221.212:8888/api/health
 ## 4. 测试普通对话
 
 ```bash
-curl -X POST http://115.159.221.212:8888/api/chat \
+curl -X POST http://115.159.221.212:15320/api/chat \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "帮我规划东京3日游"}],
@@ -120,7 +120,7 @@ curl -X POST http://115.159.221.212:8888/api/chat \
 ## 5. 测试流式输出
 
 ```bash
-curl -N -X POST http://115.159.221.212:8888/api/chat/stream \
+curl -N -X POST http://115.159.221.212:15320/api/chat/stream \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "帮我规划东京3日游"}],
@@ -143,7 +143,7 @@ data: {"delta":"..."}
 你的页面仓库 `Japan-Travel-Guide` 已经配置为默认请求：
 
 ```env
-VITE_API_BASE_URL=http://115.159.221.212:8888
+VITE_API_BASE_URL=http://115.159.221.212:15320
 ```
 
 所以只要当前模型服务正常启动，前端 AI 小助手就会使用这套免费的本地模型服务。
@@ -190,10 +190,10 @@ docker compose exec ollama ollama pull qwen2.5:0.5b
 确认服务是否可访问：
 
 ```bash
-curl http://115.159.221.212:8888/api/health
+curl http://115.159.221.212:15320/api/health
 ```
 
-确认服务器安全组 / 防火墙是否开放 `8888` 端口。
+确认服务器安全组 / 防火墙是否开放 `15320` 端口。
 
 ### 8.3 想换模型
 
@@ -293,5 +293,5 @@ docker compose up -d
 然后检查：
 
 ```bash
-curl http://127.0.0.1:8888/api/health
+curl http://127.0.0.1:15320/api/health
 ```
