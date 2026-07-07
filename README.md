@@ -221,6 +221,32 @@ OLLAMA_NUM_THREAD=3
 MAX_CONCURRENT_REQUESTS=1
 ```
 
+### 8.4 解决 HTTPS 网页下的“Mixed Content”错误
+
+如果你的旅游网站是通过 `https://` 访问的，而 AI 服务是 `http://`，浏览器会拦截请求。
+
+**解决方法 A：使用域名 + Nginx（推荐）**
+
+1.  为 AI 服务配置一个子域名（如 `api.yourdomain.com`）。
+2.  在服务器上安装 Nginx 并配置 SSL 证书。
+3.  在 Nginx 中配置反向代理：
+    ```nginx
+    server {
+        listen 443 ssl;
+        server_name api.yourdomain.com;
+        # SSL 证书配置...
+        location / {
+            proxy_pass http://127.0.0.1:15325;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
+    ```
+
+**解决方法 B：临时在浏览器中放行**
+
+在浏览器地址栏右侧点击“不安全内容”图标，选择“允许”或“加载不安全的脚本”。
+
 ---
 
 ## 9. 可选：以后切回付费模型
