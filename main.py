@@ -141,7 +141,10 @@ class Handler(BaseHTTPRequestHandler):
         self._send(204, b'')
 
     def do_GET(self) -> None:
-        if self.path in ('/', '/api/health'):
+        path = self.path
+        if path.startswith('/tencentcloud'):
+            path = path[len('/tencentcloud'):] or '/'
+        if path in ('/', '/api/health'):
             self._send(200, _json_bytes({
                 'ok': True,
                 'service': SERVICE_NAME,
@@ -163,7 +166,10 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(raw or '{}')
 
     def do_POST(self) -> None:
-        if self.path == '/api/chat':
+        path = self.path
+        if path.startswith('/tencentcloud'):
+            path = path[len('/tencentcloud'):] or '/'
+        if path == '/api/chat':
             try:
                 payload = self._read_payload()
                 reply = _call_ollama(payload) if MODEL_PROVIDER == 'ollama' else _call_openai(payload)
@@ -172,7 +178,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, _json_bytes({'ok': False, 'error': '模型调用失败: ' + str(exc), 'reply': ''}))
             return
 
-        if self.path == '/api/chat/stream':
+        if path == '/api/chat/stream':
             self._handle_stream()
             return
 
