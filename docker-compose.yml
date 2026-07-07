@@ -1,4 +1,3 @@
-version: '3.9'
 services:
   public-japan-travel-ai:
     build: .
