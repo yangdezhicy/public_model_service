@@ -81,14 +81,8 @@ docker compose exec ollama ollama list
 
 ## 3. 健康检查
 
-由于腾讯云服务器环境可能需要 `/tencentcloud` 前缀，服务已兼容：
-
 ```bash
-# 直接访问
 curl http://115.159.221.212:1217/api/health
-
-# 通过前缀访问（推荐）
-curl http://115.159.221.212:1217/tencentcloud/api/health
 ```
 
 正常返回类似：
