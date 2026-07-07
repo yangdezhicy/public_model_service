@@ -35,6 +35,7 @@ OLLAMA_NUM_THREAD = int(os.environ.get('OLLAMA_NUM_THREAD') or '3')
 MAX_CONCURRENT_REQUESTS = int(os.environ.get('MAX_CONCURRENT_REQUESTS') or '1')
 REQUEST_TIMEOUT = int(os.environ.get('REQUEST_TIMEOUT') or '120')
 STREAM_TIMEOUT = int(os.environ.get('STREAM_TIMEOUT') or '180')
+HOST = os.environ.get('HOST') or '0.0.0.0'
 PORT = int(os.environ.get('PORT') or '8000')
 CORS_ALLOW_ORIGINS = _split_csv(os.environ.get('CORS_ALLOW_ORIGINS') or '*')
 OLLAMA_BASE_URL = (os.environ.get('OLLAMA_BASE_URL') or 'http://ollama:11434').rstrip('/')
@@ -248,5 +249,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    print(f'{SERVICE_NAME} listening on 0.0.0.0:{PORT}, provider={MODEL_PROVIDER}, model={MODEL_NAME}')
-    ThreadingHTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
+    print(f'{SERVICE_NAME} listening on {HOST}:{PORT}, provider={MODEL_PROVIDER}, model={MODEL_NAME}')
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
