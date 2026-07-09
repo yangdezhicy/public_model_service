@@ -15,33 +15,32 @@
 
 ## 1. 默认模型（4 核 CPU / 4GB 内存 / 40GB 系统盘方案）
 
-你的服务器配置是 **CPU 4 核、内存 4GB、系统盘 40GB**。这个配置可以运行本地免费模型。当前默认使用 `qwen2.5:1.5b` 提升回答准确性，并通过单并发、低温度和上下文限制控制内存；如果服务器仍然 OOM，可临时降回 `qwen2.5:0.5b`。
+你的服务器配置是 **CPU 4 核、内存 4GB、系统盘 40GB**。为了保证推理速度和系统稳定性，当前默认使用 `qwen2.5:0.5b`。
 
 ```env
 MODEL_PROVIDER=ollama
 OLLAMA_BASE_URL=http://ollama:11434
-MODEL_NAME=qwen2.5:1.5b
+MODEL_NAME=qwen2.5:0.5b
 MODEL_TEMPERATURE=0.2
-MODEL_MAX_TOKENS=1000
-OLLAMA_NUM_CTX=4096
+MODEL_MAX_TOKENS=800
+OLLAMA_NUM_CTX=2048
 OLLAMA_NUM_THREAD=3
 MAX_CONCURRENT_REQUESTS=1
 ```
 
 这套方案的目标是：
 
-- 优先保证 4G 内存服务器能稳定运行；
-- 控制上下文长度和输出长度，降低内存占用；
-- 使用 3 个推理线程，给 4 核 CPU 预留 1 核给系统、Docker 和 Web 服务；
-- 单并发生成，避免多个请求同时挤爆内存；
-- 40GB 系统盘足够存放当前服务和 `qwen2.5:1.5b`，但不建议同时下载太多大模型；
-- 保持中文旅游问答可用，适合作为当前阶段的免费 AI 小助手。
+- 优先保证 4G 内存服务器能流畅运行；
+- 控制上下文长度为 2048，显著降低内存和 CPU 压力；
+- 使用 3 个推理线程，给系统留出余量；
+- 单并发生成，避免请求堆积导致卡死。
 
-如果后续服务器升级到 8G 或以上，可以再尝试：
+如果后续发现性能富余，可以尝试升级到：
 
 ```env
 MODEL_NAME=qwen2.5:1.5b
-MODEL_MAX_TOKENS=1200
+MODEL_MAX_TOKENS=1000
+OLLAMA_NUM_CTX=4096
 ```
 
 如果服务器有更高内存或 GPU，再考虑 `qwen2.5:3b`、`llama3.2:3b` 等更大模型。

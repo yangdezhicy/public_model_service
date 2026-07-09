@@ -27,10 +27,10 @@ _load_dotenv()
 
 SERVICE_NAME = os.environ.get('SERVICE_NAME') or 'free-japan-travel-ai'
 MODEL_PROVIDER = (os.environ.get('MODEL_PROVIDER') or 'ollama').lower()
-MODEL_NAME = os.environ.get('MODEL_NAME') or 'qwen2.5:1.5b'
+MODEL_NAME = os.environ.get('MODEL_NAME') or 'qwen2.5:0.5b'
 MODEL_TEMPERATURE = float(os.environ.get('MODEL_TEMPERATURE') or '0.2')
-MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '1000')
-OLLAMA_NUM_CTX = int(os.environ.get('OLLAMA_NUM_CTX') or '4096')
+MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '800')
+OLLAMA_NUM_CTX = int(os.environ.get('OLLAMA_NUM_CTX') or '2048')
 OLLAMA_NUM_THREAD = int(os.environ.get('OLLAMA_NUM_THREAD') or '3')
 MAX_CONCURRENT_REQUESTS = int(os.environ.get('MAX_CONCURRENT_REQUESTS') or '1')
 REQUEST_TIMEOUT = int(os.environ.get('REQUEST_TIMEOUT') or '120')
