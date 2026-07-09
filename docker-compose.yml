@@ -7,16 +7,4 @@ services:
       - "127.0.0.1:15326:8000"
     env_file:
       - .env
-    depends_on:
-      - ollama
     restart: unless-stopped
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: public-japan-travel-ollama
-    volumes:
-      - ollama_data:/root/.ollama
-    restart: unless-stopped
-
-volumes:
-  ollama_data:

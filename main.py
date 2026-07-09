@@ -1,10 +1,10 @@
 import json
 import os
-import urllib.error
-import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import BoundedSemaphore
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple
+
+from langchain_openai import ChatOpenAI
 
 
 def _split_csv(value: str) -> List[str]:
@@ -25,21 +25,17 @@ def _load_dotenv(path: str = '.env') -> None:
 
 _load_dotenv()
 
-SERVICE_NAME = os.environ.get('SERVICE_NAME') or 'free-japan-travel-ai'
-MODEL_PROVIDER = (os.environ.get('MODEL_PROVIDER') or 'ollama').lower()
-MODEL_NAME = os.environ.get('MODEL_NAME') or 'qwen2.5:0.5b'
+SERVICE_NAME = os.environ.get('SERVICE_NAME') or 'japan-travel-ai'
+MODEL_PROVIDER = (os.environ.get('MODEL_PROVIDER') or 'siliconflow').lower()
+MODEL_NAME = os.environ.get('MODEL_NAME') or 'Qwen/Qwen2.5-7B-Instruct'
 MODEL_TEMPERATURE = float(os.environ.get('MODEL_TEMPERATURE') or '0.2')
-MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '800')
-OLLAMA_NUM_CTX = int(os.environ.get('OLLAMA_NUM_CTX') or '2048')
-OLLAMA_NUM_THREAD = int(os.environ.get('OLLAMA_NUM_THREAD') or '3')
-MAX_CONCURRENT_REQUESTS = int(os.environ.get('MAX_CONCURRENT_REQUESTS') or '1')
+MODEL_MAX_TOKENS = int(os.environ.get('MODEL_MAX_TOKENS') or '900')
+MAX_CONCURRENT_REQUESTS = int(os.environ.get('MAX_CONCURRENT_REQUESTS') or '2')
 REQUEST_TIMEOUT = int(os.environ.get('REQUEST_TIMEOUT') or '120')
-STREAM_TIMEOUT = int(os.environ.get('STREAM_TIMEOUT') or '180')
 HOST = os.environ.get('HOST') or '0.0.0.0'
 PORT = int(os.environ.get('PORT') or '8000')
 CORS_ALLOW_ORIGINS = _split_csv(os.environ.get('CORS_ALLOW_ORIGINS') or '*')
-OLLAMA_BASE_URL = (os.environ.get('OLLAMA_BASE_URL') or 'http://ollama:11434').rstrip('/')
-OPENAI_BASE_URL = (os.environ.get('OPENAI_BASE_URL') or 'https://api.openai.com/v1').rstrip('/')
+OPENAI_BASE_URL = (os.environ.get('OPENAI_BASE_URL') or 'https://api.siliconflow.cn/v1').rstrip('/')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') or ''
 MODEL_SEMAPHORE = BoundedSemaphore(max(1, MAX_CONCURRENT_REQUESTS))
 
@@ -53,7 +49,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def _json_bytes(data: Dict) -> bytes:
+def _json_bytes(data: Dict[str, Any]) -> bytes:
     return json.dumps(data, ensure_ascii=False).encode('utf-8')
 
 
@@ -64,67 +60,63 @@ def _compact_text(value: str, limit: int = 6500) -> str:
     return compact[:limit] + '\n【资料过长已截断：请优先使用以上高相关片段】'
 
 
-def _history(payload: Dict) -> List[Dict[str, str]]:
+def _history(payload: Dict[str, Any]) -> List[Tuple[str, str]]:
     knowledge = _compact_text(payload.get('knowledge') or '')
     system_prompt = SYSTEM_PROMPT + ('\n\n【站内资料】\n' + knowledge if knowledge else '')
-    messages = [{'role': 'system', 'content': system_prompt}]
+    messages: List[Tuple[str, str]] = [('system', system_prompt)]
     for msg in (payload.get('messages') or [])[-6:]:
         role = msg.get('role')
         content = msg.get('content')
         if role in ('user', 'assistant') and isinstance(content, str):
-            messages.append({'role': role, 'content': content})
+            messages.append(('human' if role == 'user' else 'ai', content))
     return messages
 
 
-def _post_json(url: str, payload: Dict, headers: Dict[str, str] | None = None, timeout: int = 120) -> Dict:
-    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={'Content-Type': 'application/json', **(headers or {})},
-        method='POST',
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = resp.read().decode('utf-8')
-        return json.loads(data)
+def _content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get('text') or item.get('content')
+                if isinstance(text, str):
+                    parts.append(text)
+        return ''.join(parts)
+    return str(content or '')
 
 
-def _call_ollama(payload: Dict) -> str:
-    with MODEL_SEMAPHORE:
-        data = _post_json(
-            OLLAMA_BASE_URL + '/api/chat',
-            {
-                'model': MODEL_NAME,
-                'messages': _history(payload),
-                'stream': False,
-                'options': {
-                    'temperature': MODEL_TEMPERATURE,
-                    'num_predict': MODEL_MAX_TOKENS,
-                    'num_ctx': OLLAMA_NUM_CTX,
-                    'num_thread': OLLAMA_NUM_THREAD,
-                },
-            },
-            timeout=REQUEST_TIMEOUT,
-        )
-    return (data.get('message') or {}).get('content') or ''
-
-
-def _call_openai(payload: Dict) -> str:
+def _llm() -> ChatOpenAI:
     if not OPENAI_API_KEY:
-        raise RuntimeError('OpenAI-compatible 模式未配置 OPENAI_API_KEY')
+        raise RuntimeError('SiliconFlow 模式未配置 OPENAI_API_KEY')
+    return ChatOpenAI(
+        model=MODEL_NAME,
+        base_url=OPENAI_BASE_URL,
+        api_key=OPENAI_API_KEY,
+        temperature=MODEL_TEMPERATURE,
+        max_tokens=MODEL_MAX_TOKENS,
+        timeout=REQUEST_TIMEOUT,
+    )
+
+
+def _call_model(payload: Dict[str, Any]) -> str:
+    if MODEL_PROVIDER not in ('siliconflow', 'openai-compatible', 'langchain'):
+        raise RuntimeError('当前版本默认使用 LangChain + SiliconFlow，请将 MODEL_PROVIDER 配置为 siliconflow')
     with MODEL_SEMAPHORE:
-        data = _post_json(
-            OPENAI_BASE_URL + '/chat/completions',
-            {
-                'model': MODEL_NAME,
-                'messages': _history(payload),
-                'temperature': MODEL_TEMPERATURE,
-                'max_tokens': MODEL_MAX_TOKENS,
-            },
-            headers={'Authorization': 'Bearer ' + OPENAI_API_KEY},
-            timeout=REQUEST_TIMEOUT,
-        )
-    return data.get('choices', [{}])[0].get('message', {}).get('content') or ''
+        response = _llm().invoke(_history(payload))
+    return _content_to_text(response.content)
+
+
+def _stream_model(payload: Dict[str, Any], write_delta) -> None:
+    if MODEL_PROVIDER not in ('siliconflow', 'openai-compatible', 'langchain'):
+        raise RuntimeError('当前版本默认使用 LangChain + SiliconFlow，请将 MODEL_PROVIDER 配置为 siliconflow')
+    with MODEL_SEMAPHORE:
+        for chunk in _llm().stream(_history(payload)):
+            delta = _content_to_text(chunk.content)
+            if delta:
+                write_delta(delta)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -156,17 +148,15 @@ class Handler(BaseHTTPRequestHandler):
                 'service': SERVICE_NAME,
                 'provider': MODEL_PROVIDER,
                 'model': MODEL_NAME,
-                'configured': True if MODEL_PROVIDER == 'ollama' else bool(OPENAI_API_KEY),
-                'free': MODEL_PROVIDER == 'ollama',
-                'num_ctx': OLLAMA_NUM_CTX,
+                'configured': bool(OPENAI_API_KEY),
+                'base_url': OPENAI_BASE_URL,
                 'max_tokens': MODEL_MAX_TOKENS,
-                'num_thread': OLLAMA_NUM_THREAD,
                 'max_concurrent_requests': MAX_CONCURRENT_REQUESTS,
             }))
             return
         self._send(404, _json_bytes({'ok': False, 'error': 'Not found'}))
 
-    def _read_payload(self) -> Dict:
+    def _read_payload(self) -> Dict[str, Any]:
         length = int(self.headers.get('Content-Length') or '0')
         raw = self.rfile.read(length).decode('utf-8') if length else '{}'
         return json.loads(raw or '{}')
@@ -175,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/chat':
             try:
                 payload = self._read_payload()
-                reply = _call_ollama(payload) if MODEL_PROVIDER == 'ollama' else _call_openai(payload)
+                reply = _call_model(payload)
                 self._send(200, _json_bytes({'ok': bool(reply), 'reply': reply, 'provider': MODEL_PROVIDER, 'model': MODEL_NAME, 'error': '' if reply else '空响应'}))
             except Exception as exc:  # noqa: BLE001
                 self._send(200, _json_bytes({'ok': False, 'error': '模型调用失败: ' + str(exc), 'reply': ''}))
@@ -196,11 +186,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'keep-alive')
             self.send_header('Access-Control-Allow-Origin', self._cors_origin())
             self.end_headers()
-            if MODEL_PROVIDER == 'ollama':
-                self._stream_ollama(payload)
-            else:
-                reply = _call_openai(payload)
-                self._write_sse({'delta': reply})
+            _stream_model(payload, lambda delta: self._write_sse({'delta': delta}))
             self._write_sse({'done': True})
         except Exception as exc:  # noqa: BLE001
             try:
@@ -209,40 +195,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
 
-    def _write_sse(self, data: Dict) -> None:
+    def _write_sse(self, data: Dict[str, Any]) -> None:
         chunk = ('data: ' + json.dumps(data, ensure_ascii=False) + '\n\n').encode('utf-8')
         self.wfile.write(chunk)
         self.wfile.flush()
-
-    def _stream_ollama(self, payload: Dict) -> None:
-        body = json.dumps({
-            'model': MODEL_NAME,
-            'messages': _history(payload),
-            'stream': True,
-            'options': {
-                'temperature': MODEL_TEMPERATURE,
-                'num_predict': MODEL_MAX_TOKENS,
-                'num_ctx': OLLAMA_NUM_CTX,
-                'num_thread': OLLAMA_NUM_THREAD,
-            },
-        }, ensure_ascii=False).encode('utf-8')
-        req = urllib.request.Request(
-            OLLAMA_BASE_URL + '/api/chat',
-            data=body,
-            headers={'Content-Type': 'application/json'},
-            method='POST',
-        )
-        with MODEL_SEMAPHORE:
-            with urllib.request.urlopen(req, timeout=STREAM_TIMEOUT) as resp:
-                for raw in resp:
-                    if not raw.strip():
-                        continue
-                    obj = json.loads(raw.decode('utf-8'))
-                    delta = (obj.get('message') or {}).get('content') or ''
-                    if delta:
-                        self._write_sse({'delta': delta})
-                    if obj.get('done'):
-                        break
 
     def log_message(self, fmt: str, *args) -> None:
         print('%s - - [%s] %s' % (self.address_string(), self.log_date_time_string(), fmt % args))
