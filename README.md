@@ -53,14 +53,14 @@ MODEL_MAX_TOKENS=1200
 你的服务器对外地址建议保持为 Nginx HTTPS 代理地址：
 
 ```text
-https://115.159.221.212:15325
+https://www.yangdezhi.com.cn
 ```
 
-当前 Docker Compose 不再直接占用宿主机公网 `15325`，而是：
+当前 Docker Compose 不再直接占用公网端口，而是只把 AI 服务映射到宿主机本地端口：
 
 ```text
 宿主机 127.0.0.1:15326 -> 容器内部 8000
-Nginx 对外监听 15325 -> proxy_pass http://127.0.0.1:15326
+Nginx 对外使用 https://www.yangdezhi.com.cn/api -> proxy_pass http://127.0.0.1:15326
 ```
 
 在服务器执行：
@@ -93,7 +93,7 @@ docker compose exec ollama ollama list
 curl http://127.0.0.1:15326/api/health
 
 # 再测 Nginx 对外 HTTPS 代理地址
-curl -k https://115.159.221.212:15325/api/health
+curl -k https://www.yangdezhi.com.cn/api/health
 ```
 
 正常返回类似：
@@ -118,7 +118,7 @@ curl -k https://115.159.221.212:15325/api/health
 ## 4. 测试普通对话
 
 ```bash
-curl -k -X POST https://115.159.221.212:15325/api/chat \
+curl -k -X POST https://www.yangdezhi.com.cn/api/chat \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "帮我规划东京3日游"}],
@@ -131,7 +131,7 @@ curl -k -X POST https://115.159.221.212:15325/api/chat \
 ## 5. 测试流式输出
 
 ```bash
-curl -k -N -X POST https://115.159.221.212:15325/api/chat/stream \
+curl -k -N -X POST https://www.yangdezhi.com.cn/api/chat/stream \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "帮我规划东京3日游"}],
@@ -154,7 +154,7 @@ data: {"delta":"..."}
 你的页面仓库 `Japan-Travel-Guide` 已经配置为默认请求：
 
 ```env
-VITE_API_BASE_URL=https://115.159.221.212:15325
+VITE_API_BASE_URL=https://www.yangdezhi.com.cn
 ```
 
 所以只要当前模型服务正常启动，前端 AI 小助手就会使用这套免费的本地模型服务。
@@ -201,10 +201,10 @@ docker compose exec ollama ollama pull qwen2.5:1.5b
 确认服务是否可访问：
 
 ```bash
-curl -k https://115.159.221.212:15325/api/health
+curl -k https://www.yangdezhi.com.cn/api/health
 ```
 
-确认服务器安全组 / 防火墙是否开放 `15325` 端口。
+确认服务器安全组 / 防火墙是否开放 `443` 端口，并确认宝塔/Nginx 已将 `/api` 反向代理到 `http://127.0.0.1:15326`。
 
 ### 8.3 想换模型
 
@@ -243,10 +243,10 @@ MAX_CONCURRENT_REQUESTS=1
 3.  在 Nginx 中配置反向代理：
     ```nginx
     server {
-        listen 15325 ssl;
-        server_name 115.159.221.212;
+        listen 443 ssl;
+        server_name www.yangdezhi.com.cn;
         # SSL 证书配置...
-        location / {
+        location /api/ {
             proxy_pass http://127.0.0.1:15326;
             proxy_http_version 1.1;
             proxy_set_header Host $host;

@@ -3,7 +3,7 @@ services:
     build: .
     container_name: public-japan-travel-ai
     ports:
-      # Nginx 对外监听 15325；AI 服务只绑定宿主机本地 15326，避免抢占公网端口
+      # Nginx 对外使用 https://www.yangdezhi.com.cn/api；AI 服务只绑定宿主机本地 15326，避免暴露公网端口
       - "127.0.0.1:15326:8000"
     env_file:
       - .env
