@@ -176,7 +176,28 @@ docker compose logs -f public-japan-travel-ai
 
 常见原因包括 API Key 错误、SiliconFlow 账户额度不足、模型名不存在、网络访问 SiliconFlow 失败。
 
-### 8.3 想换模型
+### 8.3 报 `'ascii' codec can't encode characters`
+
+这个错误通常说明 `.env` 里的 `OPENAI_API_KEY` 仍然是中文占位符，或者密钥中混入了中文、空格等非法字符。请确认配置类似：
+
+```env
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
+```
+
+不要写成：
+
+```env
+OPENAI_API_KEY=你的_SiliconFlow_API_Key
+OPENAI_API_KEY=请填写你的_SiliconFlow_API_Key
+```
+
+修改后重新启动：
+
+```bash
+docker compose up -d --build
+```
+
+### 8.4 想换模型
 
 在 `.env` 修改：
 

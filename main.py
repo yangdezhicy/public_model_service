@@ -88,9 +88,17 @@ def _content_to_text(content: Any) -> str:
     return str(content or '')
 
 
-def _llm() -> ChatOpenAI:
+def _validate_api_key() -> None:
     if not OPENAI_API_KEY:
         raise RuntimeError('SiliconFlow 模式未配置 OPENAI_API_KEY')
+    if any(ord(char) > 127 for char in OPENAI_API_KEY):
+        raise RuntimeError('OPENAI_API_KEY 包含中文或其他非 ASCII 字符，请在 .env 中填入 SiliconFlow 控制台生成的真实 sk- 开头密钥')
+    if OPENAI_API_KEY in ('your_siliconflow_api_key_here', 'your_api_key_here'):
+        raise RuntimeError('OPENAI_API_KEY 仍是示例占位符，请替换为 SiliconFlow 控制台生成的真实 sk- 开头密钥')
+
+
+def _llm() -> ChatOpenAI:
+    _validate_api_key()
     return ChatOpenAI(
         model=MODEL_NAME,
         base_url=OPENAI_BASE_URL,
